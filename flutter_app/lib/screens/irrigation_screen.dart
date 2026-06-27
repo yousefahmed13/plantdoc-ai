@@ -15,8 +15,14 @@ class IrrigationScreen extends StatefulWidget {
 class _IrrigationScreenState extends State<IrrigationScreen> {
   final _stages = ['Germination', 'Vegetative', 'Flowering', 'Fruiting', 'Harvesting'];
   final _seasons = ['Spring', 'Summer', 'Autumn', 'Winter', 'Rabi', 'Kharif'];
-  final _stageAr = {'Germination': 'الإنبات', 'Vegetative': 'الخضري', 'Flowering': 'التزهير', 'Fruiting': 'الإثمار', 'Harvesting': 'الحصاد'};
-  final _seasonAr = {'Spring': 'الربيع', 'Summer': 'الصيف', 'Autumn': 'الخريف', 'Winter': 'الشتاء', 'Rabi': 'شتوي', 'Kharif': 'صيفي'};
+  final _stageAr = {
+    'Germination': 'الإنبات', 'Vegetative': 'الخضري',
+    'Flowering': 'التزهير', 'Fruiting': 'الإثمار', 'Harvesting': 'الحصاد'
+  };
+  final _seasonAr = {
+    'Spring': 'الربيع', 'Summer': 'الصيف',
+    'Autumn': 'الخريف', 'Winter': 'الشتاء', 'Rabi': 'شتوي', 'Kharif': 'صيفي'
+  };
 
   String _stage = 'Vegetative';
   String _season = 'Summer';
@@ -25,22 +31,33 @@ class _IrrigationScreenState extends State<IrrigationScreen> {
   double _soil = 45;
 
   bool _loading = false;
-  Map<String, dynamic>? _result;
+  String? _result;
   String? _error;
+  Map<String, dynamic>? _irrigationContext;
 
   Future<void> _calculate() async {
     setState(() { _loading = true; _error = null; _result = null; });
     try {
-      final existingSession = await ApiService.getSessionId();
-      final data = await ApiService.analyzeWeatherOnly(
-        temperatureC: _temp,
-        humidity: _humidity,
-        soilMoisture: _soil,
-        cropGrowthStage: _stage,
-        season: _season,
-        sessionId: existingSession,
+      final irrigCtx = {
+        'temperature_c': _temp,
+        'humidity': _humidity,
+        'soil_moisture': _soil,
+        'crop_growth_stage': _stage,
+        'season': _season,
+      };
+      final isAr = widget.lang == 'ar';
+      final msg = isAr
+          ? 'احسب احتياجات الري وقدّم توصيات لهذه الظروف:\nدرجة الحرارة: ${_temp.toStringAsFixed(0)}°C\nالرطوبة: ${_humidity.toStringAsFixed(0)}%\nرطوبة التربة: ${_soil.toStringAsFixed(0)}%\nمرحلة النمو: ${_stageAr[_stage]}\nالموسم: ${_seasonAr[_season]}'
+          : 'Calculate irrigation needs and give recommendations for:\nTemperature: ${_temp.toStringAsFixed(0)}°C\nHumidity: ${_humidity.toStringAsFixed(0)}%\nSoil moisture: ${_soil.toStringAsFixed(0)}%\nGrowth stage: $_stage\nSeason: $_season';
+
+      final res = await ApiService.chat(
+        message: msg,
+        irrigationContext: irrigCtx,
       );
-      setState(() => _result = data);
+      setState(() {
+        _result = res['reply']?.toString() ?? '';
+        _irrigationContext = irrigCtx;
+      });
     } catch (e) {
       setState(() => _error = e.toString().replaceAll('Exception:', '').trim());
     } finally {
@@ -74,9 +91,11 @@ class _IrrigationScreenState extends State<IrrigationScreen> {
               const SizedBox(height: 10),
               AppCard(
                 child: Row(children: [
-                  Expanded(child: _dropdown(isAr ? 'مرحلة النمو' : 'Growth Stage', _stage, _stages, isAr ? _stageAr : null, (v) => setState(() => _stage = v!), isAr)),
+                  Expanded(child: _dropdown(isAr ? 'مرحلة النمو' : 'Growth Stage', _stage, _stages,
+                      isAr ? _stageAr : null, (v) => setState(() => _stage = v!), isAr)),
                   const SizedBox(width: 12),
-                  Expanded(child: _dropdown(isAr ? 'الموسم' : 'Season', _season, _seasons, isAr ? _seasonAr : null, (v) => setState(() => _season = v!), isAr)),
+                  Expanded(child: _dropdown(isAr ? 'الموسم' : 'Season', _season, _seasons,
+                      isAr ? _seasonAr : null, (v) => setState(() => _season = v!), isAr)),
                 ]),
               ),
               const SizedBox(height: 20),
@@ -84,9 +103,12 @@ class _IrrigationScreenState extends State<IrrigationScreen> {
               const SizedBox(height: 10),
               AppCard(
                 child: Column(children: [
-                  _slider(isAr ? 'درجة الحرارة' : 'Temperature', _temp, 0, 50, '°C', AppColors.amber, (v) => setState(() => _temp = v), isAr),
-                  _slider(isAr ? 'الرطوبة النسبية' : 'Humidity', _humidity, 0, 100, '%', AppColors.blue, (v) => setState(() => _humidity = v), isAr),
-                  _slider(isAr ? 'رطوبة التربة' : 'Soil Moisture', _soil, 0, 100, '%', AppColors.primary, (v) => setState(() => _soil = v), isAr),
+                  _slider(isAr ? 'درجة الحرارة' : 'Temperature', _temp, 0, 50, '°C',
+                      AppColors.amber, (v) => setState(() => _temp = v), isAr),
+                  _slider(isAr ? 'الرطوبة النسبية' : 'Humidity', _humidity, 0, 100, '%',
+                      AppColors.blue, (v) => setState(() => _humidity = v), isAr),
+                  _slider(isAr ? 'رطوبة التربة' : 'Soil Moisture', _soil, 0, 100, '%',
+                      AppColors.primary, (v) => setState(() => _soil = v), isAr),
                 ]),
               ),
               const SizedBox(height: 20),
@@ -107,8 +129,7 @@ class _IrrigationScreenState extends State<IrrigationScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.blue.withOpacity(0.07),
-        borderRadius: BorderRadius.circular(14),
+        color: AppColors.blue.withOpacity(0.07), borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.blue.withOpacity(0.2)),
       ),
       child: Row(children: [
@@ -126,22 +147,19 @@ class _IrrigationScreenState extends State<IrrigationScreen> {
     );
   }
 
-  Widget _sectionLabel(String title, bool isAr) {
-    return Text(title, style: appFont(isAr, size: 13, weight: FontWeight.w700, color: AppColors.textSecondary));
-  }
+  Widget _sectionLabel(String title, bool isAr) =>
+      Text(title, style: appFont(isAr, size: 13, weight: FontWeight.w700, color: AppColors.textSecondary));
 
-  Widget _dropdown(String label, String value, List<String> items, Map<String, String>? labels,
-      ValueChanged<String?> onChanged, bool isAr) {
+  Widget _dropdown(String label, String value, List<String> items,
+      Map<String, String>? labels, ValueChanged<String?> onChanged, bool isAr) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: appFont(isAr, size: 11, color: AppColors.textSecondary, weight: FontWeight.w600)),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
-          value: value,
-          onChanged: onChanged,
-          dropdownColor: AppColors.card,
-          style: appFont(isAr, size: 12),
+          value: value, onChanged: onChanged,
+          dropdownColor: AppColors.card, style: appFont(isAr, size: 12),
           decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
           items: items.map((e) => DropdownMenuItem(
             value: e,
@@ -152,8 +170,8 @@ class _IrrigationScreenState extends State<IrrigationScreen> {
     );
   }
 
-  Widget _slider(String label, double value, double min, double max, String unit, Color color,
-      ValueChanged<double> onChanged, bool isAr) {
+  Widget _slider(String label, double value, double min, double max, String unit,
+      Color color, ValueChanged<double> onChanged, bool isAr) {
     return Column(children: [
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Text(label, style: appFont(isAr, size: 12, color: AppColors.textSecondary)),
@@ -200,9 +218,6 @@ class _IrrigationScreenState extends State<IrrigationScreen> {
   }
 
   Widget _buildResult(bool isAr) {
-    final intro = _result!['intro_message'] ?? _result!['final_report'] ?? '';
-    final sessionId = _result!['session_id'] ?? '';
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -220,44 +235,29 @@ class _IrrigationScreenState extends State<IrrigationScreen> {
             const SizedBox(height: 10),
             Text(isAr ? 'تحليل الري' : 'Irrigation Analysis',
                 style: appFont(isAr, size: 16, weight: FontWeight.w900, color: AppColors.blue)),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-              ),
-              child: Text(isAr ? 'تم الحساب بواسطة AI' : 'Calculated by AI',
-                  style: appFont(isAr, size: 12, weight: FontWeight.w700, color: AppColors.primary)),
-            ),
           ]),
         ),
-        if (intro.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          AppCard(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const Icon(Icons.analytics_rounded, size: 14, color: AppColors.accent),
-                const SizedBox(width: 8),
-                Text(isAr ? 'توصيات الري' : 'Irrigation Recommendations',
-                    style: appFont(isAr, size: 13, weight: FontWeight.w700, color: AppColors.accent)),
-              ]),
-              const SizedBox(height: 10),
-              Text(intro.toString(),
-                  style: appFont(isAr, size: 13, color: AppColors.textSecondary, height: 1.6)),
+        const SizedBox(height: 12),
+        AppCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.analytics_rounded, size: 14, color: AppColors.accent),
+              const SizedBox(width: 8),
+              Text(isAr ? 'توصيات الري' : 'Irrigation Recommendations',
+                  style: appFont(isAr, size: 13, weight: FontWeight.w700, color: AppColors.accent)),
             ]),
-          ),
-        ],
+            const SizedBox(height: 10),
+            Text(_result!, style: appFont(isAr, size: 13, color: AppColors.textSecondary, height: 1.6)),
+          ]),
+        ),
         const SizedBox(height: 12),
         GestureDetector(
           onTap: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => ChatScreen(lang: widget.lang, sessionId: sessionId))),
+              builder: (_) => ChatScreen(lang: widget.lang))),
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppColors.accent.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
+              color: AppColors.accent.withOpacity(0.08), borderRadius: BorderRadius.circular(14),
               border: Border.all(color: AppColors.accent.withOpacity(0.2)),
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
