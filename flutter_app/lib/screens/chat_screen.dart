@@ -13,9 +13,10 @@ class _Msg {
 
 class ChatScreen extends StatefulWidget {
   final String lang;
-  final String? sessionId;
+  final String? analysisContext;
 
-  const ChatScreen({Key? key, required this.lang, this.sessionId}) : super(key: key);
+  const ChatScreen({Key? key, required this.lang, this.analysisContext})
+      : super(key: key);
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -23,11 +24,13 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final List<_Msg> _msgs = [];
+  final List<Map<String, String>> _history = [];
   final TextEditingController _ctrl = TextEditingController();
   final ScrollController _scroll = ScrollController();
   bool _sending = false;
-  String? _sessionId;
-  bool _hasSession = false;
+
+  bool get _hasContext =>
+      widget.analysisContext != null && widget.analysisContext!.isNotEmpty;
 
   @override
   void initState() {
@@ -35,19 +38,15 @@ class _ChatScreenState extends State<ChatScreen> {
     _init();
   }
 
-  Future<void> _init() async {
+  void _init() {
     final isAr = widget.lang == 'ar';
-    _sessionId = widget.sessionId;
-    if (_sessionId == null) _sessionId = await ApiService.getSessionId();
-    _hasSession = _sessionId != null && _sessionId!.isNotEmpty;
-
-    final greeting = _hasSession
+    final greeting = _hasContext
         ? (isAr
-            ? 'مرحباً! لديّ تقرير محمّل من التحليل السابق 🌿\n\nاسألني عن التشخيص، العلاج، الري، أو أي سؤال زراعي.'
-            : 'Hello! I have your previous analysis report loaded 🌿\n\nAsk me about the diagnosis, treatment, irrigation, or any agricultural question.')
+            ? 'مرحباً! لديّ نتائج التحليل محمّلة 🌿\n\nاسألني عن التشخيص، العلاج، الري، أو أي سؤال زراعي.'
+            : 'Hello! I have your analysis results loaded 🌿\n\nAsk me about the diagnosis, treatment, irrigation, or any agricultural question.')
         : (isAr
-            ? 'مرحباً! أنا AgroVision AI 🌿\n\nيمكنك رفع صورة من شاشة التشخيص أولاً للحصول على تحليل، أو اسألني أي سؤال زراعي مباشرة.'
-            : 'Hello! I am AgroVision AI 🌿\n\nYou can upload an image from the Diagnosis screen first for analysis, or ask me any agricultural question directly.');
+            ? 'مرحباً! أنا AgroVision AI 🌿\n\nاسألني أي سؤال زراعي — أمراض، حشرات، ري، أسمدة...'
+            : 'Hello! I am AgroVision AI 🌿\n\nAsk me any agricultural question — diseases, insects, irrigation, fertilizers...');
 
     setState(() => _msgs.add(_Msg(role: 'model', text: greeting)));
   }
@@ -56,30 +55,31 @@ class _ChatScreenState extends State<ChatScreen> {
     final txt = _ctrl.text.trim();
     if (txt.isEmpty || _sending) return;
 
-    if (_sessionId == null || _sessionId!.isEmpty) {
-      final isAr = widget.lang == 'ar';
-      setState(() => _msgs.add(_Msg(role: 'model',
-          text: isAr
-              ? 'يرجى تشخيص صورة نبات أولاً لبدء المحادثة مع الذكاء الاصطناعي.'
-              : 'Please diagnose a plant image first to start the AI conversation.')));
-      return;
-    }
-
     _ctrl.clear();
-    setState(() { _msgs.add(_Msg(role: 'user', text: txt)); _sending = true; });
+    setState(() {
+      _msgs.add(_Msg(role: 'user', text: txt));
+      _sending = true;
+    });
     _scrollDown();
 
     try {
-      final res = await ApiService.chat(sessionId: _sessionId!, message: txt);
-      setState(() => _msgs.add(_Msg(role: 'model', text: res['reply'] ?? '...')));
+      final res = await ApiService.chat(
+        message: txt,
+        history: List.from(_history),
+        analysisContext: widget.analysisContext,
+      );
+      final reply = res['reply']?.toString() ?? '...';
+      _history.add({'role': 'user', 'message': txt});
+      _history.add({'role': 'model', 'message': reply});
+      setState(() => _msgs.add(_Msg(role: 'model', text: reply)));
     } catch (e) {
       final isAr = widget.lang == 'ar';
       setState(() => _msgs.add(_Msg(
-        role: 'model',
-        text: isAr
-            ? 'عذراً، فشل الاتصال. تأكد من أن Kaggle notebook شغّال ورابط ngrok صحيح.'
-            : 'Sorry, connection failed. Make sure the Kaggle notebook is running and ngrok URL is correct.',
-      )));
+            role: 'model',
+            text: isAr
+                ? 'عذراً، فشل الاتصال بالخادم. تأكد من أن التطبيق شغّال.'
+                : 'Sorry, failed to connect to the server. Make sure the app is running.',
+          )));
     } finally {
       setState(() => _sending = false);
       _scrollDown();
@@ -130,17 +130,21 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: const Icon(Icons.arrow_back_ios_rounded, size: 18),
             onPressed: () => Navigator.pop(context),
           ),
-          actions: [
-            if (_hasSession)
-              IconButton(
-                icon: const Icon(Icons.description_rounded, size: 18, color: AppColors.accent),
-                onPressed: _showFullReport,
-                tooltip: isAr ? 'التقرير الكامل' : 'Full Report',
-              ),
-          ],
         ),
         body: Column(children: [
-          if (!_hasSession)
+          if (_hasContext)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+              color: AppColors.primary.withOpacity(0.06),
+              child: Row(children: [
+                const Icon(Icons.layers_rounded, size: 13, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(isAr ? 'نتائج التحليل محمّلة تلقائياً' : 'Analysis results auto-loaded',
+                    style: appFont(isAr, size: 11, color: AppColors.textSecondary)),
+              ]),
+            )
+          else
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -150,22 +154,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    isAr ? 'شخّص صورة نبات أولاً للحصول على تحليل متكامل' : 'Diagnose a plant image first for full AI analysis',
+                    isAr ? 'يمكنك الاستشارة المباشرة أو شخّص صورة أولاً للحصول على تحليل' : 'Ask directly or diagnose an image first for full analysis',
                     style: appFont(isAr, size: 11, color: AppColors.amber),
                   ),
                 ),
-              ]),
-            ),
-          if (_hasSession)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-              color: AppColors.primary.withOpacity(0.06),
-              child: Row(children: [
-                const Icon(Icons.layers_rounded, size: 13, color: AppColors.primary),
-                const SizedBox(width: 8),
-                Text(isAr ? 'تقرير التحليل محمّل تلقائياً' : 'Analysis report auto-loaded',
-                    style: appFont(isAr, size: 11, color: AppColors.textSecondary)),
               ]),
             ),
           Expanded(
@@ -185,53 +177,10 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> _showFullReport() async {
-    if (_sessionId == null) return;
-    final isAr = widget.lang == 'ar';
-    showDialog(
-      context: context,
-      builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
-        future: ApiService.getFullReport(_sessionId!),
-        builder: (ctx, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return AlertDialog(
-              backgroundColor: AppColors.card,
-              content: LoadingOverlay(
-                  message: isAr ? 'جاري تحميل التقرير...' : 'Loading report...', isAr: isAr),
-            );
-          }
-          final report = snap.data?['report'] ?? (isAr ? 'لا يوجد تقرير' : 'No report available');
-          return AlertDialog(
-            backgroundColor: AppColors.card,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: const BorderSide(color: AppColors.cardBorder),
-            ),
-            title: Text(isAr ? 'التقرير الكامل' : 'Full Report',
-                style: appFont(isAr, size: 16, weight: FontWeight.w800)),
-            content: SingleChildScrollView(
-              child: Text(report.toString(),
-                  style: appFont(isAr, size: 12, color: AppColors.textSecondary, height: 1.6)),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () { Clipboard.setData(ClipboardData(text: report.toString())); Navigator.pop(ctx); },
-                child: Text(isAr ? 'نسخ' : 'Copy', style: const TextStyle(color: AppColors.primary)),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(isAr ? 'إغلاق' : 'Close'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildBubble(_Msg msg, bool isAr) {
     final isUser = msg.role == 'user';
-    final timeStr = '${msg.time.hour.toString().padLeft(2, '0')}:${msg.time.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${msg.time.hour.toString().padLeft(2, '0')}:${msg.time.minute.toString().padLeft(2, '0')}';
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -252,8 +201,7 @@ class _ChatScreenState extends State<ChatScreen> {
           decoration: BoxDecoration(
             color: isUser ? const Color(0xFF0D2118) : AppColors.card,
             borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
+              topLeft: const Radius.circular(16), topRight: const Radius.circular(16),
               bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(4),
               bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
             ),
@@ -279,7 +227,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 const SizedBox(height: 4),
                 Align(
                   alignment: Alignment.bottomRight,
-                  child: Text(timeStr, style: appFont(isAr, size: 9, color: AppColors.textMuted)),
+                  child: Text(timeStr,
+                      style: appFont(isAr, size: 9, color: AppColors.textMuted)),
                 ),
               ],
             ),
@@ -296,8 +245,7 @@ class _ChatScreenState extends State<ChatScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(16),
+          color: AppColors.card, borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.cardBorder),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -315,7 +263,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildInputBar(bool isAr) {
     return Container(
-      padding: EdgeInsets.fromLTRB(12, 10, 12, MediaQuery.of(context).viewInsets.bottom + 12),
+      padding: EdgeInsets.fromLTRB(
+          12, 10, 12, MediaQuery.of(context).viewInsets.bottom + 12),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.divider)),
@@ -332,17 +281,13 @@ class _ChatScreenState extends State<ChatScreen> {
               hintText: isAr
                   ? 'اسأل عن الأمراض، الحشرات، الري...'
                   : 'Ask about diseases, insects, irrigation...',
-              filled: true,
-              fillColor: AppColors.card,
+              filled: true, fillColor: AppColors.card,
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24),
                   borderSide: const BorderSide(color: AppColors.cardBorder)),
-              enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24),
                   borderSide: const BorderSide(color: AppColors.cardBorder)),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24),
                   borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
             ),
           ),
