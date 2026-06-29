@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const String _defaultBaseUrl =
-      'https://b9d43d31-7320-4b49-baf4-5c3c4e8a1f54-00-5gjyqnwnqbi6.spock.replit.dev';
+      'https://plant-leaf-diseases-detection-874513033493.europe-west2.run.app';
 
   static Future<String> getBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
